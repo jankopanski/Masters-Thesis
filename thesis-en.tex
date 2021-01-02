@@ -1,0 +1,194 @@
+\documentclass[en]{pracamgr}
+
+% Bibliography
+% https://www.overleaf.com/learn/latex/Bibliography_management_in_LaTeX
+\usepackage[
+    backend=biber,
+    style=alphabetic,
+    sorting=ynt,
+    urldate=long,
+    backref=true,
+]{biblatex}
+\addbibresource{thesis.bib}
+
+\usepackage{xcolor}
+
+% Images
+\usepackage{graphicx}
+% \graphicspath{ {./images/} }
+
+% SVG images
+\usepackage{svg}
+
+% PGF images
+% \usepackage{pgf}
+
+% Images side by side
+\usepackage{subcaption} 
+
+% FloatBarrier
+\usepackage{placeins}
+
+% Normal text in equations
+\usepackage{amsmath}
+
+% Code snippets
+\usepackage{minted}
+
+% Quotes, useful for biblatex
+\usepackage{csquotes}
+
+% Should fix hbox overfill warnings
+% http://www.khirevich.com/latex/microtype/
+\usepackage{microtype}
+
+\usepackage[nobiblatex]{xurl}
+
+\usepackage[hidelinks]{hyperref}
+% cleverref is a smarter autoref, must be loaded after hyperref
+\usepackage[capitalise,noabbrev,nameinlink]{cleveref}
+% \usepackage[dvipsnames]{xcolor}
+% \newcommand\myshade{85}
+% \colorlet{mylinkcolor}{violet}
+% \colorlet{mycitecolor}{YellowOrange}
+% \colorlet{myurlcolor}{Aquamarine}
+% \usepackage[colorlinks]{hyperref}
+% \hypersetup{
+%     linkcolor = mylinkcolor!\myshade!black,
+%     citecolor = mycitecolor!\myshade!black,
+%     urlcolor  = myurlcolor!\myshade!black,
+% }
+
+% Enumerate without spaces
+\usepackage{enumitem}
+
+% Latex graphics
+\usepackage{tikz}
+\usetikzlibrary{positioning,patterns,decorations,decorations.pathreplacing}
+
+% Algorithms
+\usepackage{algorithm}  % Algorithms floating box
+\usepackage[noend]{algpseudocode}  % Algorithmicx entvironment
+
+% Squares as bullet points in the appendix
+\usepackage{amssymb}
+
+% Splitting into several files
+\usepackage{subfiles}
+
+\autor{Jan Mirosław Kopański}{359785}
+
+\title{Optimisation of job scheduling for supercomputers with burst buffers}
+\titlepl{Optymalizacja szeregowania zadań na superkomputerach z uwzględnieniem buforów impulsowych}
+
+\kierunek{Computer Science}
+
+\opiekun{dr hab. Krzysztof Rządca\\
+  Institute of Informatics\\
+}
+
+\date{December 2020}
+
+% Socrates-Erasmus classification:
+\dziedzina{ 
+11.3 Informatics, Computer Science
+}
+
+% ACM classification
+\klasyfikacja{
+\begin{itemize}[nolistsep]
+    \item Software and its engineering---Software organization and properties---Contextual software domains---Operating systems---Process management---Scheduling
+    \item Theory of computation---Design and analysis of algorithms---Online algorithms---Online learning algorithms---Scheduling algorithms
+    \item Computing methodologies---Modeling and simulation---Simulation types and techniques---Massively parallel and high-performance simulations
+    \item Information systems---Information storage systems---Storage management---Hierarchical storage management
+\end{itemize}
+% • Software and its engineering---Software organization and properties---Contextual software domains---Operating systems---Process management---Scheduling\\
+% • Theory of computation---Design and analysis of algorithms---Online algorithms---Online learning algorithms---Scheduling algorithms\\
+% • Computing methodologies---Modeling and simulation---Simulation types and techniques---Massively parallel and high-performance simulations\\
+% • Information systems---Information storage systems---Storage management---Hierarchical storage management
+% Without these below
+% • Theory of computation---Design and analysis of algorithms---Approximation algorithms analysis---Scheduling algorithms\\
+% • Hardware---Integrated circuits---Semiconductor memory---Non-volatile memory\\
+% • Networks---Network performance evaluation---Network simulations
+}
+
+% Keywords
+\keywords{High performance computing (HPC); burst buffer; online job scheduling; EASY backfilling; multi-resource scheduling; plan-based scheduling; simulated annealing; nonvolatile memory; simulation; supercomputer}
+
+% Macros and definitions
+
+% For capital letter in Chapter and Section in \autoref
+\renewcommand{\autoref}{\cref}
+
+% Source under an image
+\newcommand*{\captionsource}[2]{%
+  \caption[{#1}]{%
+    #1%
+    \\\hspace{\linewidth}%
+    Source: #2%
+  }%
+}
+
+% Should measure remaining height on page
+\newcommand\measurepage{\dimexpr\pagegoal-\pagetotal-\baselineskip\relax}
+
+% Autoref support for code listings
+\providecommand*{\listingautorefname}{Listing}
+
+\begin{document}
+\maketitle
+
+% Abstract
+\begin{abstract}
+The ever-increasing gap between compute and I/O performance in HPC platforms, together with the development of novel NVMe storage devices (NVRAM), led to the emergence of the burst buffer concept - an intermediate persistent storage layer logically positioned between random-access main memory and a parallel file system. Since the appearance of this technology, numerous supercomputers have been equipped with burst buffers exploring various architectures. Despite the development of real-world architectures as well as research concepts, Resource and Job Management Systems, such as Slurm, provide only marginal support for scheduling jobs with burst buffer requirements. This research is primarily motivated by the alerting observation that burst buffers are omitted from reservations in the procedure of backfilling in existing job schedulers.
+
+\medskip
+
+In this dissertation, we forge a detailed supercomputer simulator based on Batsim and SimGrid, which is capable of simulating I/O contention and I/O congestion effects. Due to the lack of publicly available workloads with burst buffer requests, we create a burst buffer request distribution model derived from Parallel Workload Archive logs. We investigate the impact of burst buffer reservations on the overall efficiency of online job scheduling for canonical algorithms: First-Come-First-Served (FCFS) and Shortest-Job-First (SJF) EASY-backfilling.
+
+\medskip
+
+Our results indicate that the lack of burst buffer reservations in backfilling may significantly deteriorate the performance of scheduling. Backfilling without future burst buffer reservations can result in almost identical mean waiting time as FCFS without any backfilling and have enormously high waiting time dispersion. Furthermore, this lack of reservations may cause the starvation of medium-size and wide jobs. Finally, we propose a burst-buffer--aware plan-based scheduling algorithm with simulated annealing optimisation, which improves the mean waiting time by over $20\%$ and mean bounded slowdown by $27\%$ compared to the SJF EASY-backfilling.
+\end{abstract}
+
+\tableofcontents
+%\listoffigures
+%\listoftables
+
+\chapter*{Introduction} \label{ch:intro}
+\addcontentsline{toc}{chapter}{Introduction}
+\subfile{introduction}
+
+\chapter{Related work} \label{ch:related-work}
+\subfile{related-work}
+
+\chapter{Simulation model} \label{ch:simulation-model}
+\subfile{simulation-model}
+
+\chapter{Scheduling algorithms} \label{ch:algorithms}
+\subfile{algorithms}
+
+\chapter{Simulation results} \label{ch:results}
+\subfile{results}
+
+\chapter{Conclusions} \label{ch:conclusion}
+\subfile{conclusion}
+
+\chapter{Future work} \label{ch:future-work}
+\subfile{future-work}
+
+\appendix
+\chapter{Useful online resources} \label{ch:online}
+\subfile{online}
+
+\printbibliography[
+heading=bibintoc,
+]
+
+\end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% coding: latin-2
+%%% End:

@@ -1,0 +1,437 @@
+\documentclass[thesis-en.tex]{subfiles}
+
+\begin{document}
+\section{Burst buffer reservations} \label{sec:canonical}
+The primary motivation for our research was an observation that existing job schedulers, such as Slurm, do not make future reservations of burst buffers during backfilling. Indeed, they only reserve compute resources for jobs at the front of a waiting queue and proceed to backfill remaining jobs in the queue. Available burst buffers are then allocated to those jobs that are expected to start earliest. Our hypothesis states that this procedure may significantly deteriorate the efficiency of scheduling. This effect may occur when jobs with low compute and high storage requirements are backfilled ahead of priority jobs. Priority jobs could be then delayed because of insufficient storage resources available in a system. Furthermore, this scenario could even lead to starvation of priority jobs, which means that backfilling without future burst buffer reservations is not a fair scheduling algorithm.
+
+Slurm also provides a general description of burst buffer management in its documentation (\url{https://slurm.schedmd.com/burst_buffer.html}).
+\begin{quote}
+\begin{enumerate}\addtocounter{enumi}{-1}
+    \item Read configuration information and initial state information
+    \item After expected start times for pending jobs are established, allocate burst buffers to those jobs expected to start earliest and start stage-in of required files
+    \item After stage-in has completed, jobs can be allocated compute nodes and begin execution
+    \item After job has completed execution, begin file stage-out from burst buffer
+    \item After file stage-out has completed, burst buffer can be released and the job record purged
+\end{enumerate}
+\end{quote}
+
+As the first stage of our research, we analyse the impact of future burst buffer allocations on the overall efficiency of backfilling. To achieve this, we will compare the following scheduling algorithms:
+\begin{enumerate}
+    \item First-Come-First-Served (FCFS) without backfilling
+    \item Greedy FCFS filling
+    \item FCFS EASY-backfilling without future burst buffer reservations
+    \item FCFS EASY-backfilling with future burst buffer reservations
+\end{enumerate}
+
+\begin{algorithm}[htb!]
+\caption{First-Come-First-Served}
+\label{alg:fcfs}
+\begin{algorithmic}[1]
+\Procedure{FCFS}{$queue$}
+  \For{$job \in queue$}
+    \State $procs \gets$ find available compute resources for $job$
+    \State $bb \gets$ find available storage resources for $job$
+    \If{$procs$ and $bb$ were both found}
+        \State Launch $job$ with $procs$ and $bb$
+        \State Remove $job$ from $queue$
+    \Else
+        \State Break
+    \EndIf
+  \EndFor
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[htb!]
+\caption{Greedy filling}
+\label{alg:filler}
+\begin{algorithmic}[1]
+\Procedure{Filler}{$queue$}
+  \For{$job \in queue$}
+    \State $procs \gets$ find available compute resources for $job$
+    \State $bb \gets$ find available storage resources for $job$
+    \If{$procs$ and $bb$ were both found}
+        \State Launch $job$ with $procs$ and $bb$
+        \State Remove $job$ from $queue$
+    \EndIf
+  \EndFor
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[htb!]
+\caption{Backfilling without future burst buffer reservations}
+\label{alg:backfill-nores}
+\begin{algorithmic}[1]
+\Procedure{Backfill}{$queue$, $D$}
+  \Comment{$D$ - reservation depth}
+  \State \Call{FCFS}{$queue$}
+  \State $J \gets$ pop the first $D$ jobs from $queue$
+  \For{$job \in J$}
+  \Comment{in FIFO order}
+  \State Reserve compute resources for $job$ in the future
+  \EndFor
+  \State \Call{Filler}{$queue$} 
+  \State Remove reservations for jobs in $J$
+  \State Push back $J$ at the front of $queue$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[htb!]
+\caption{Backfilling with future burst buffer reservations}
+\label{alg:backfill}
+\begin{algorithmic}[1]
+\Procedure{Backfill}{$queue$, $D$}
+  \Comment{$D$ - reservation depth}
+  \State \Call{FCFS}{$queue$}
+  \State $J \gets$ pop the first $D$ jobs from $queue$
+  \For{$job \in J$}
+  \Comment{in FIFO order}
+  \State Reserve compute and \underline{storage} resources for $job$ in the future
+  \EndFor
+  \State \Call{Filler}{$queue$}
+  \State Remove reservations for jobs in $J$
+  \State Push back $J$ at the front of $queue$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+These policies are outlined in algorithm listings \ref{alg:fcfs} to \ref{alg:backfill}. The Greedy Filling policy may be considered as FCFS backfilling without any job reservations. It just attempts to launch jobs whenever enough resources are available. It is important to note that Greedy Filling is not a fair scheduling algorithm. In terms of EASY backfilling, we present a generalised version with a configurable depth of reserved jobs. 
+
+None of those elementary algorithms specifies any concrete requirements on resource reservations. Their general approach allows the resource allocation schemes to be implemented differently on each supercomputing platform. It is a significant benefit, because supercomputers often vary widely in components such as network topology or burst buffer architecture, which was outlined in \autoref{sec:network} and \autoref{sec:architectures} accordingly.
+
+\begin{algorithm}[htb]
+\caption{Shortest Jobs First Backfilling}
+\label{alg:backfill-sjf}
+\begin{algorithmic}[1]
+\Procedure{Backfill-sjf}{$queue$, $D$}
+  \Comment{$D$ - reservation depth}
+  \State \Call{FCFS}{$queue$}
+  \State $J \gets$ pop the first $D$ jobs from $queue$
+  \For{$job \in J$}
+  \Comment{in FIFO order}
+  \State Reserve compute and storage resources for $job$ in the future
+  \EndFor
+  \State $sjf \gets$ sort jobs in $queue$ ascending by walltime
+  \State \Call{Filler}{$sjf$}
+  \State Remove reservations for jobs in $J$
+  \State Push back $J$ at the front of $queue$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+In sections \ref{sec:maxutil}, \ref{sec:window}, \ref{sec:plan}, we present our algorithms aiming to improve multi-resource scheduling. As a baseline for comparing simulation results, we treat the Shortest Jobs First Backfilling shown in algorithm listing \ref{alg:backfill-sjf}. This variant of scheduling has the job queue sorted ascending by walltime for backfilling. However, only the jobs for backfilling are sorted. At first, it attempts to launch as many jobs as possible in First-In-First-Out order. This schema is essential to preserve fairness.
+
+\section{Maximising system utilisation} \label{sec:maxutil}
+Canonical scheduling algorithms are focused on providing satisfying performance while preserving fairness. These algorithms are based on greedy heuristics and do not take advantage of optimisation methods. It has been observed that the ordering of jobs in a waiting queue impacts the performance of scheduling \cite{srinivasan2002selective}. Notably, having jobs sorted by walltime for backfilling (Shortest Job First) usually improves results in both mean waiting time and mean slowdown. In general, it is feasible to define an objective function and iterate over permutations of jobs to obtain an optimal resource allocation.
+
+As one of our approaches, we attempt to improve the overall scheduling performance by maximising system utilisation while maintaining load balance in the waiting queue between compute and storage resources. Therefore, we propose algorithm \ref{alg:maxutil}, which is based on two concepts:
+\begin{enumerate}
+    \item maximise both compute and storage utilisation,
+    \item ensure a mechanism capable of self-balancing resource load in the waiting queue.
+\end{enumerate}
+
+% \begin{algorithm}[htb!]
+\begin{algorithm}[p]
+\caption{Maximising system utilisation by job permutation search}
+\label{alg:maxutil}
+\begin{algorithmic}[1]
+\Procedure{Maxutil}{$queue$, $D$, $N$, $\beta$}
+  \Comment{$D$ - reservation depth}\Statex
+  \Comment{$N$ - number of steps}\Statex
+  \Comment{$\beta$ - balance factor}
+  \State $L_{compute} \gets$ calculate compute load in $queue$
+  \State $L_{storage} \gets$ calculate storage load in $queue$
+  \If{$L_{storage} \leq \beta \cdot L_{compute}$}
+    \State The objective is to lexicography maximise (compute, storage, mean wait time)
+  \Else
+    \State The objective is to lexicography maximise (storage, compute, mean wait time)
+  \EndIf
+  \Statex
+  \State $J \gets$ pop the first $D$ jobs from $queue$ \label{alg:maxutil:pop}
+  \State \Call{FCFS}{$J$}
+  \State Remove launched jobs from $J$
+  \State Reserve resources for jobs in $J$ in the future \label{alg:maxutil:reserve}
+  \Statex
+  \If{$queue$ is small}
+    \Comment{exhaustive search}
+    \State Iterate over all possible permutations;
+    \State $P \gets$ find the jobs permutation with the highest score
+  \Statex
+  \Else
+    \Comment{hill climbing}
+    \State $P \gets$ find the best permutation among the set of initial candidates
+    \State $last \gets$ index of the last job in $P$ that could be launched
+    \State $S_{best} \gets$ score for $P$
+    \State $steps \gets 0$ 
+    \For{$distance$ from $1$ to $|queue| - 1$}
+      \For{$index$ from $0$ to $min(last, |queue| - distance - 1$)}
+        \State $steps \gets steps + 1$
+        \If{$steps > N$}
+          Break both loops
+        \EndIf
+        \State Swap jobs in $P$ at positions $index$ and $index + distance$
+        \State $S \gets$ simulate backfilling for $P$
+        \If{$S > S_{best}$}
+          \Comment{accept new permutation}
+          \State $S_{best} \gets S$
+          \State Update $last$
+          \State Break
+        \Else
+          \Comment{reject new permutation}
+          \State Swap jobs in $P$ at positions $index$ and $index + distance$
+        \EndIf
+      \EndFor
+    \EndFor
+  \EndIf
+  \Statex
+  \State \Call{Filler}{$P$}
+  \State Remove reservations for jobs in $J$
+  \Comment{will be reacquired in the next iteration}
+  \State Push back $J$ at the front of $queue$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Optimisation objective}
+To meet both goals, our optimisation objective is to lexicography maximise values in a 3-tuple. The order of fields in the tuple differs depending on the queue load. Let $Q$ be a set of jobs in the waiting queue. Let $P$ be a permutation of jobs as in listing \ref{alg:maxutil}. It does not include jobs selected for reservations from the front of the queue. Let $\Phi \subset P$ be a set of jobs that could be launched immediately. Let $M$ denote the total number of processors in a platform and $B$ be total capacity of burst buffer nodes. Then our objective tuples, using notation from \autoref{sec:notation}, are defined as follows.
+\[ L_{compute} = \frac{1}{M} \sum_{j \in Q} size_j \qquad \leftarrow \text{compute load in the queue}\]
+\[ L_{storage} = \frac{1}{B} \sum_{j \in Q} size_j \cdot bb_j \qquad \leftarrow \text{storage load in the queue}\]
+\[ (\sum_{j \in \Phi} size_j,\ \sum_{j \in \Phi} size_j \cdot bb_j,\ \frac{1}{|\Phi|} \sum_{j \in \Phi} W_j) \quad \text{for} \quad L_{storage} \leq \beta \cdot L_{compute} \]
+\[ (\sum_{j \in \Phi} size_j \cdot bb_j ,\ \sum_{j \in \Phi} size_j,\ \frac{1}{|\Phi|} \sum_{j \in \Phi} W_j) \quad \text{for} \quad L_{storage} > \beta \cdot L_{compute} \]
+where $size_j$ is the requested number of processors and $bb_j$ is the requested size of burst buffer per processor for the job $j$.
+
+In other words, maximising compute resource utilisation is the main priority when demand for compute resources by jobs in the waiting queue is relatively more extensive than demand for storage resources. Analogously, decreasing storage load is the main priority otherwise.
+
+There is a third component of the tuple, which is a mean waiting time of the jobs selected for execution. We added it after observing that various permutations often raise the same resource utilisation, but differ in terms of the waiting time. This change should additionally ensure that, as a side goal, the jobs that spent the most time in the queue are selected earlier.
+
+\paragraph{Balance factor}
+The balance factor $\beta$ is responsible for setting which kind of resource should be favoured when scheduling. For $\beta > 1$, the algorithm is more likely to favour reducing compute load in the waiting queue. In another case, for $\beta < 1$ reduction of storage load is prioritised. Selecting the right value of $\beta$ is a matter of platform and workload characteristics.
+
+\paragraph{Fairness}
+At the beginning of the algorithm in lines \ref{alg:maxutil:pop}-\ref{alg:maxutil:reserve}, the first $D$ jobs in the waiting queue are attempted to run immediately or if it is not possible then are reserved with resources in the future. It differs from the canonical backfilling in \autoref{alg:backfill}, in which jobs were executed in FIFO order as long as possible. Our schema holds fairness property but ensures less restrictive guarantees for it.
+
+At the end of the scheduling algorithm, all reservations are released. Naturally, some running jobs may terminate before achieving walltimes between the consecutive scheduling iterations. The jobs from the $J$ set will receive new reservations, potentially starting earlier, in the succeeding scheduling iteration. It does not impact the fairness, because reservation assignment is performed in the FIFO order. Additionally, the persistent state maintained between the iterations is smaller.
+
+\paragraph{Exhaustive search}
+When the waiting queue is small, we perform an exhaustive search over all possible permutations of jobs. Simulating job execution on a permutation is a relatively fast procedure. Hence we proceed to an exhaustive search for $|queue| \leq 6$, which yields $720$ permutations.
+
+\paragraph{Hill climbing}
+For longer queues of pending jobs, we switch to the hill-climbing optimisation method. Hill climbing is a simple optimisation technique, in which a transition to a new solution is accepted only in case of a new better solution. We define the transition between permutations as a swap of two jobs. The procedure starts with swapping only adjacent jobs and then gradually moves towards swapping jobs at more and more distant positions. We also ensure that at the beginning, jobs from the front of the queue are selected, as swapping them could have the most significant influence on permutation score. We use $last$ variable to track the index of the latest job that was selected for execution in the current solution. Swapping jobs after this index cannot change the result, hence is it dispensable to simulate those permutations. Lastly, we reset the procedure each time after a better solution is found. We run the hill-climbing optimisation for at most $N$ steps (we use $5000$ steps in the simulations).
+
+\paragraph{Candidates for the initial permutation}
+The initial permutation for optimisation comes from a set of initial candidates. These are permutations with specific properties. Namely, they are sorted according to criteria which makes them potential candidates for global maximum. \emph{We define the set of initial candidates} as jobs sorted:
+\begin{enumerate}
+    \item in the order of submission (FCFS),
+    \item ascending by the requested number of processors,
+    \item descending by the requested number of processors,
+    \item ascending by the requested size of burst buffer per processor,
+    \item descending by the requested size of burst buffer per processor,
+    \item ascending by the ratio of the requested size of burst buffer per processor to the requested number of processors,
+    \item descending by the ratio of the requested size of burst buffer per processor to the requested number of processors,
+    \item ascending by walltime,
+    \item descending by walltime.
+\end{enumerate}
+
+\section{Window-based combinatorial optimisation} \label{sec:window}
+A different approach for maximising system utilisation is based on finding an optimal set of jobs, which could be launched immediately. This set should optimise a given objective, which in our case is the same as in \autoref{alg:maxutil}. As the number of all possible combinations is $O(2^n)$, it is vital to limit the search space. One method of doing this is to perform an optimisation on a fixed window of jobs from the front of the waiting queue. A window-based approach with multi-objective optimisation has been already explored by Fan \textit{et al.} in \cite{10.1145/3307681.3325401}. They defined two optimisation objectives: compute and burst buffer utilisation. As the optimisation method, they decided to adapt a genetic algorithm which generates a Pareto front. We explore a different custom optimisation technique that can be easily parallelised.
+
+% \begin{algorithm}[htb!]
+\begin{algorithm}[p]
+\caption{Window-based combinatorial scheduling}
+\label{alg:window}
+\begin{algorithmic}[1]
+\Procedure{Window}{$queue$, $N$, $M$, $D$, $\beta$}
+  \Comment{$N$ - max window size}\Statex
+  \Comment{$M$ - max age}\Statex
+  \Comment{$D$ - reservation depth}\Statex
+  \Comment{$\beta$ - balance factor}
+  \State $L_{compute} \gets$ calculate compute load in $queue$
+  \State $L_{storage} \gets$ calculate storage load in $queue$
+  \If{$L_{storage} \leq \beta \cdot L_{compute}$}
+    \State The objective is to lexicography maximise (compute, storage, mean wait time)
+  \Else
+    \State The objective is to lexicography maximise (storage, compute, mean wait time)
+  \EndIf
+  \Statex
+  \State $W \gets$ pop the first $min(N, |queue|)$  jobs from $queue$
+  \State Increase the age of the jobs in $W$
+  \State Set the first $D$ jobs in $W$ with age $> M$ as mandatory
+  \Statex
+  \State Let $C_{best}$ be an empty set
+  \Comment{combination of jobs}
+  \State $S_{best} \gets (0,0,0)$
+  \State Let $G_{open}$ be an empty set
+  \Comment{set of combinations}
+  \State Add a combination made of all jobs in $window$ to $G_{open}$
+  \While{$G_{open}$ is not empty} \label{alg:window:while}
+    \State Let $G_{unsat}$ be an empty set
+    \For{$C$ in $G_{open}$} \label{alg:window:for}
+      \If{There are enough resources to run all jobs in $C$}
+        \State $S \gets$ calculate score for $C$
+        \If{$S > S_{best}$}
+          \State $S_{best} \gets S$
+          \State $C_{best} \gets K$
+        \EndIf
+      \Else
+        \State Add $C$ to $G_{unsat}$
+      \EndIf
+    \EndFor
+    \State Empty $G_{open}$
+    \For{$C$ in $G_{unsat}$}
+      \State Generate all combinations from $C$ of size $|C| - 1$
+      \State Add every combination that contains all mandatory jobs to $G_{open}$
+    \EndFor
+  \EndWhile
+  \Statex
+  \If{$C_{best}$ is empty}
+    \State \Call{Backfill-sjf}{$queue$, $D$}
+  \Else
+    \State Launch all jobs in $C_{best}$
+    \State Remove jobs in $C_{best}$ from $queue$
+    \State \Call{Backfill-sjf}{$queue$, $0$}
+  \EndIf
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+Finding an optimal combination has one major disadvantage compared to a permutation-search--based approach. It requires to incorporate resource allocation into the optimisation method. Searching for optimal permutation is agnostic from resource assignment and hence does not restrict a system to some specific policy nor requires a redesign of an algorithm for a given platform.
+
+\paragraph{Fairness}
+In our window-based algorithm, presented in \autoref{alg:window}, we use the same optimisation objective as in \autoref{sec:maxutil}. However, we even further loosen the fairness guarantees by the introduction of maximum job age. Each job is allowed to spend at most $M$ scheduling runs within the window without being selected to launch. It also applies to the jobs at the front of the queue. Jobs which exceed the age $M$ and are in the first $D$ positions in the queue must be selected for a combination to be accepted.
+
+\paragraph{Optimisation technique}
+We design a custom optimisation technique of searching for an optimal combination within the window. In each step of the loop in line \ref{alg:window:while}, it maintains a set $G_{open}$ of combinations. In the beginning, a single combination made of all jobs inside the window is added. Then, with each step, the size of combinations in $G_{open}$ is decreased by one. If for a given combination $C$, it is known that all jobs in $C$ can be launched immediately, then we compare $C$ to the currently best solution. Any other combination derived from $C$ by taking its subset cannot give a better result. Therefore, we cut this branch of search. If the check for $C$ did not end with a positive result either because the resource allocation is not possible or computation timed out, we generate all combinations based on $C$ of size smaller by one and add them to $G_{open}$.
+
+The whole procedure is computationally intensive. The advantage is that the loop in line \ref{alg:window:for} could be easily parallelised. A single step of the loop in line \ref{alg:window:while} has at most ${{n}\choose{\lfloor n/2 \rfloor}}$ combinations to check. Checking a single combination is a computationally intensive task, hence we propose to assign an $\epsilon$ timeout ($1$ second in our case) for checking a single combination. Then, for a window of size $n$, $k$ core CPU, checking all combinations should take approximately $\epsilon \cdot \lceil {{n}\choose{\lfloor n/2 \rfloor}} / k \rceil$ seconds in a single step of the loop in line \ref{alg:window:while}.
+
+\paragraph{Combination check}
+Finding whether there is enough processors for a given combination could be checked with a single \textit{if} statement. Checking for burst buffer allocation may be more complicated depending on a target platform. For this purpose, we decided to use Integer-Linear-Programming. The below linear program finds allocations of burst buffers for jobs in the combination $C$. Let $x_{i,j}$ be an integer variable with the following semantics:  $i$-th jobs in the combination $C$ was allocated with $bb_i$ bytes in $j$-th storage node $x_{i,j}$ times. Let $A_j$ denote currently available capacity in $j$-th storage node.
+\begin{equation} \label{eq:window:bound}
+    0 \leq x_{i,j} \leq M \quad \forall_i \forall_j
+\end{equation}
+\begin{equation} \label{eq:window:compute}
+    \sum_j x_{i,j} = C_i \quad \forall_i
+\end{equation}
+\begin{equation} \label{eq:window:storage}
+    \sum_i bb_i \cdot x_{i,j} \leq A_j \quad \forall_j
+\end{equation}
+\autoref{eq:window:bound} bounds the possible values of $x$. In particular, the lower bound is essential. \autoref{eq:window:compute} ensures that for every job in the window, every processor is assigned with the requested burst buffer size. \autoref{eq:window:storage} limits burst buffer allocation to currently available space in every storage node.
+
+We utilise the Z3 Theorem Prover \cite{10.1007/978-3-540-78800-3_24, z3-git} to implement our integer-linear-program.
+
+\medskip
+
+At the end of the scheduling, we run the Shortest-Job-First backfilling on the whole waiting queue to fill possible gaps of not utilised resources.
+
+\section{Plan-based scheduling} \label{sec:plan}
+Plan-based scheduling for burst buffers was introduced by Zheng \textit{et al.} in \cite{zheng2016exploring}. The general idea of plan-based scheduling is to create an execution plan for all jobs in the waiting queue. Naturally, only a few jobs could be launched immediately. Others are reserved with resources at different points in time for the duration of their walltimes. The reservation cannot overlap. 
+
+An execution plan is an ordered list of jobs with their scheduled start times and assigned resources. The easiest way to create the execution plan is to iterate over the queue of jobs and for each job find the earliest point in time when sufficient resources are available. The quality of the obtained plan depends on the order of the jobs. It is, therefore, possible to define an optimisation objective and do a search over permutations of the jobs similar to the algorithm outlined in \autoref{sec:maxutil}. Zheng \textit{et al.} used simulated annealing to minimise i.a. mean waiting time of all jobs in the plan.
+
+We further investigate and extend the plan-based approach to scheduling with simulated annealing optimisation. First of all, we extend the reservation schema with the reservations for burst buffer requests. This way we obtain awareness of burst buffers in the algorithm. Secondly, we apply several modifications to the simulated annealing. The most important is the introduction of a set of initial permutation candidates used to generate the best and worst initial score. These scores allow us to set optimal initial temperature for the annealing. As as result, our algorithm is capable of finding the optimal permutation and execution plan in only $N \cdot M + |\text{initial set}| = 189$ iterations, compared to $8742$ ($\lceil 100 \log_{0.9}(0.0001) \rceil$) iterations in the original publication. The number of iterations has principal importance in online job scheduling, where time available for scheduling is highly limited. The complete list of introduced novelties is following:
+\begin{enumerate}
+    \item Set of candidates for the initial permutation to simulated annealing
+    \item Variable self-adjusting initial temperature for simulated annealing
+    \item Reservation of resources for jobs at the front of the waiting queue to ensure the fairness property
+    \item Exhaustive search over all permutations for small sizes of the queue
+    \item Optimisation objective based on the starting time
+    \item Generalisation of the waiting time optimisation objective
+\end{enumerate}
+\autoref{alg:plan} presents the complete plan-based policy.
+
+% \begin{algorithm}[htb!]
+\begin{algorithm}[p]
+\caption{Plan-based scheduling}
+\label{alg:plan}
+\begin{algorithmic}[1]
+\Procedure{Plan}{$queue$, $D$, $r$, $N$, $M$}
+  \Comment{$D$ - reservation depth}\Statex
+  \Comment{$r$ - cooling rate}\Statex
+  \Comment{$N$ - cooling steps}\Statex
+  \Comment{$M$ - constant temperature steps}
+  \State $J \gets$ pop the first $D$ jobs from $queue$ \label{alg:plan:pop}
+  \State \Call{FCFS}{$J$}
+  \State Remove launched jobs from $J$
+  \State Reserve resources for jobs in $J$ in the future \label{alg:plan:reserve}
+  \Statex
+  \If{$queue$ is small}
+    \Comment{exhaustive search}
+    \State Iterate over all possible permutations;
+    \State $P_{best} \gets$ find the jobs permutation with the lowest score
+  \Statex
+  \Else
+    \Comment{simulated annealing}
+    \State $P_{best} \gets$ find a permutation with the lowest score among the set of initial candidates
+    \State $P_{worst} \gets$ find a permutation with the highest score among the set of initial candidates
+    \State Create execution plans for $P_{best}$ and $P_{worst}$
+    \State $S_{best} \gets$ calculate score for $P_{best}$ based the the execution plan
+    \State $S_{worst} \gets$ calculate score for $P_{worst}$ based the the execution plan
+    \If{$S_{best} \neq S_{worst}$}
+      \State $T \gets S_{worst} - S_{best}$ \label{alg:plan:temp}
+      \Comment{initial temperature}
+      \State $P \gets P_{best}$
+      \For{$N$ iterations}
+        \For{$M$ iterations}
+          \State $P' \gets$ swap two jobs at random positions in $P$\
+          \State Create execution plans for $P$ and $P'$
+          \State $S \gets$ calculate score for $P$ based the the execution plan
+          \State $S' \gets$ calculate score for $P'$ based the the execution plan
+          \If{$S' < S_{best}$}
+            \State $S_{best} \gets S'$
+            \State $P_{best} \gets P'$
+            \State $S \gets S'$
+            \State $P \gets P'$
+          \ElsIf{$random(0,1) < e^{(S - S')/T}$}
+            \State $S \gets S'$
+            \State $P \gets P'$
+          \EndIf
+        \EndFor
+        $T \gets r \cdot T$
+      \EndFor
+    \EndIf
+  \EndIf
+  \Statex
+  \State \Call{Filler}{$P_{best}$}
+  \State Remove reservations for jobs in $J$
+  \State Push back $J$ at the front of $queue$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Simulated annealing}
+Simulated annealing is a probabilistic optimisation method for approximating the global optimum of a given function. It was constituted by Kirkpatrick, Gelatt and Vecchi in \cite{10.2307/1690046}. It does not require to compute gradients or Hessians but depend only on the target function values. It is also very flexible in terms of space of solutions, which in our case are permutations. The disadvantage of the canonical simulated annealing is the requirement for the optimised function to evaluate to a single positive number. Hence, simulated annealing is suitable mainly for single-objective optimisation. It is possible to modify simulated annealing schema for multi-objective optimisation, however finding an initial temperature becomes then a significantly more complicated problem. For this reason, we did not use simulated annealing in \autoref{sec:maxutil}.
+
+\paragraph{Optimisation objective}
+We specify two separate optimisation objectives. A concrete plan-based implementation should choose one of them.
+\begin{enumerate}
+    \item \emph{Sum of job waiting times raised to power $\alpha > 0$}
+    \item \emph{Starting time of the latest job}
+\end{enumerate}
+In both cases, the goal is to minimise the objective.
+
+Let $Q$ denote the job queue. The first objective, for a given plan, could be formally defined as (notation from \autoref{sec:notation}):
+\[ \sum_{j \in Q} (W_j)^\alpha \]
+In \cite{zheng2016exploring}, there were considered two related functions: mean job waiting time ($\alpha = 1$) and mean squared job waiting time ($\alpha = 2$). Our definition is a generalised version of waiting time objective. Indeed, this objective should work for any real $\alpha > 0$. Smaller values, such as $\alpha = 1$, provide much flexibility to the optimisation method. However, as Zheng \textit{et al.} observed, this objective cannot prevent one job from being postponed arbitrarily by many other jobs as long as their total wait time remains the same. In an extreme case, this situation may even lead to the starvation of a job. The higher the value of $\alpha$, the more penalised is the objective function for arbitrary delaying of jobs. It should reduce the number of outliers, but at a possible cost of worse mean waiting time of all jobs.
+Furthermore, for a given plan minimising a mean is equivalent to minimising a sum. Then we may remove a redundant division. As a consequence, this may require to adjust the initial temperature if it is a fixed value, but as outlined above, we use a variable self-adjusting initial temperature.
+
+Our second objective function is formally defined as:
+\[ \max_{j \in  Q} s_j \]
+Initially, we wanted to use a maximum of finish times as a proxy to system utilisation. However, we realised that in case of submission an extraordinarily long-narrow job to the queue, the optimisation method may generate execution plans with significant gaps between scheduled jobs. This result is caused by the fact that the extraordinarily long-narrow job would dominate the finish time of all other jobs.
+
+\paragraph{Fairness}
+As indicated above, plan-based scheduling does not ensure strict fairness criteria such as a reservation depth $D$ in backfilling. Higher values of $\alpha$ prevent extensive delaying of jobs, reduce the number of outliers, but leave lesser flexibility for optimisation. Increasing the value of $\alpha$ parameter may be indeed perceived as a soft mechanism for ensuring fairness. For lower values of $\alpha$, we propose to supplement scheduling with a traditional reservation of resources, which is described in lines \ref{alg:plan:pop}-\ref{alg:plan:reserve} of algorithm \ref{alg:plan}.
+
+\paragraph{Exhaustive search}
+Similarly as in \autoref{sec:maxutil}, we run the search over all possible permutations of jobs for small queue sizes. Creating an execution plan for all jobs is significantly more computationally intensive operation than a greedy attempt to launch jobs from a permutation. Hence, we limit the exhaustive search to $|queue| \leq 5$, which results in 120 permutations to test.
+
+\paragraph{Initial permutation and temperature}
+We use the same set of candidates for an initial permutation to simulated annealing as defined at the end of \autoref{sec:maxutil}. However, in this algorithm, we select both the best and the worst permutations from the set. The scores for these permutations are used to set the initial temperature, which is shown in line \ref{alg:plan:temp}. We set it as a difference between worst and best score (energy; cost), according to a suggestion from \cite{10.1023/B:COAP.0000044187.23143.bd}. When the best and worst score obtained from the set of candidates are the same, then we omit the optimisation as in practice, we found it unlikely to yield any improvement.
+
+\paragraph{Simulated annealing configuration}
+Instead of running the simulated annealing until a threshold temperature is achieved, we set a constant number of iterations. Assuming that an optimal initial temperature is found, random transition probabilities should decrease from values near $1$ to probabilities of the magnitude $0.001$. The constant number of iterations makes scheduling time more predictable and limits the number of iterations with negligible random transition probabilities. We follow the schema of simulated annealing from \cite{zheng2016exploring} and implement it as two nested loops. The outer loop is responsible for decreasing the temperature exponentially by a cooling rate $r=0.9$. The inner loop performs iterations with a constant temperature. We set the number of iterations to $N=30$ and $M=6$. Additionally, we set a timeout of $20$ seconds for the whole simulated annealing.
+
+\paragraph{Further improvements}
+It is also possible to enhance plan-based scheduling schema with a method of predicting actual runtimes of jobs and use them for reservations instead of walltimes. However, we have not found any publications on this approach.
+\end{document}

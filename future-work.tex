@@ -1,0 +1,36 @@
+\documentclass[thesis-en.tex]{subfiles}
+
+\begin{document}
+Several research directions are arising from our work. We dedicate this chapter to discuss a few follow-up topics which in our opinion are especially worth to investigate. Additionally, we gathered various online resources in \autoref{ch:online} that we found particularly useful in our research. We think they might occur to be helpful in derived works as well.
+
+\paragraph{Extension of the Standard Workload Format}
+As we discussed in \autoref{sec:bbrequest}, there is no publicly available dataset containing a parallel job workload with real burst buffer requests. Existence of such a workload trace would be beneficial for the research community working on burst-buffer--aware and multi-resource job scheduling. A set of universal workloads will simplify new research initiative and make results reported in publications more comparable with each other. That was the case for the Parallel Workloads Archive maintained by D. Feitelson which we described in \autoref{sec:archive}.
+
+The Parallel Workloads Archive contains multiple workload logs from 1993 to 2018. However, the Standard Workload Format, to which all traces are converted, has not been updated since version 2.2 in 2006. Since then, supercomputers have evolved, and new concepts, such as burst buffers, were introduced.
+
+Therefore, we propose to investigate which information are currently missing in the Standard Workload Format and update it with new fields. The extended format in our perception should contain information about new kinds of resources. Since 2006, supercomputers have been equipped with various accelerators such as GPUs or FPGAs, and new types of memory: burst buffers, High Bandwidth Memory and accelerator onboard memory.
+
+The next step would be to collect execution traces from supercomputers. For this purpose, particularly useful might occur tools such as Darshan I/O (\autoref{sec:bbrequest}), Slurm logging (\autoref{sec:rjms}) and NVIDIA System Management Interface. The collected traced should be then combined and converted to the Standard Workload Format. The converted workloads may be analysed to discover various relations such as temporal locality, spatial locality, cross-correlation, self-similarity or long-range dependence.
+
+\paragraph{Burst-buffer--aware scheduling with reinforcement learning}
+Novel publications in job scheduling usually exploit some sort of optimisation methods to improve the overall performance of scheduling. In this dissertation, we presented three such methods: simulated annealing, hill climbing and combinatorial optimisation. However, even more complex machine-learning--based approaches are possible.
+
+Reinforcement learning approach for job scheduling has been already explored in \cite{mao2019learning}, \cite{zhang2020rlscheduler} and \cite{baheri2020mars}. The first one focuses on scheduling for Big Data applications, while the other two are dedicated primarily to the HPC domain. Nonetheless, neither of them explores multi-layer storage systems and burst-buffer--aware scheduling.
+
+We propose to merge research methodologies presented in this dissertation with reinforcement learning approaches explored in the above publications. Specifically, the scheduler might serve the role of an agent, and the simulator would be the reinforcement learning environment. We expect that a straightforward application of Q-learning should raise remarkable results.
+
+\paragraph{Implementation of plan-based scheduling in Slurm}
+Plan-based scheduling algorithms was introduced in \cite{zheng2016exploring}, where they showed up to $40\%$ improvement in mean waiting time and up to $30\%$ in mean turnaround time.
+Our results indicated the superior performance of plan-based scheduling policies over all other algorithms for all studied metrics. As described in \autoref{ch:conclusion}, they achieved over $20\%$ improvement in mean waiting time and $27\%$ in mean bounded slowdown. They are also not dependent on a concrete resource allocation scheme and can easily generalise to all kinds of shared resources.
+
+Taking all advantages into consideration, we propose to implement the plan-based scheduling algorithm with the sum of squared waiting time minimisation objective in a real Resource and Job Management Systems, for instance, Slurm. To further improve the efficiency of scheduling, parallel simulated annealing may be applied as an optimisation method.
+
+In order to test the implementation, a custom workload obtained by mixing existing HPC benchmarks can be created. Prominent candidates would be the LINPACK Benchmark (HPL) and HPCG Benchmark for compute-intensive job profiles, and IO500 Benchmark for I/O-intensive job profiles.
+
+\paragraph{Window-based scheduling}
+A direct continuation of this research could be further development and testing of window-based combinatorial scheduling described in \autoref{sec:window}. As we indicated in \autoref{sec:window-results}, this scheduling algorithm showed promising results despite the limitation of the \emph{window size} imposed by an issue in our programming dependencies. Rewiring our integer-linear program in a different code library should resolve the issue.
+
+Another field of improvement for our methodologies would be creating a realistic networking model for MPI-like communication, as mentioned in \autoref{sec:job}. 
+
+Lastly, burst buffer requests in real RJMSs could be specified in two ways: either as an ephemeral which is existing for a lifetime of a given job or a persistent burst buffer reservation. In this dissertation, we explored only the first kind while we ignored the existence of persistent burst buffer reservations. However, it should be fairly easy to extend our research by treating persistent burst buffer reservations as jobs without requested compute resources.
+\end{document}
